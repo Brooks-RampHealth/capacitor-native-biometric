@@ -13,6 +13,9 @@ public class NativeBiometric: CAPPlugin {
     struct Credentials {
         var username: String
         var password: String
+        var answer1: String
+        var answer2: String
+        var answer3: String
     }
     
     enum KeychainError: Error{
@@ -112,6 +115,9 @@ public class NativeBiometric: CAPPlugin {
             var obj = JSObject()
             obj["username"] = credentials.username
             obj["password"] = credentials.password
+            obj["answer1"] = credentials.answer1
+            obj["answer2"] = credentials.answer2
+            obj["answer3"] = credentials.answer3
             call.resolve(obj)
         } catch {
             call.reject(error.localizedDescription)
@@ -120,12 +126,12 @@ public class NativeBiometric: CAPPlugin {
     
     @objc func setCredentials(_ call: CAPPluginCall){
         
-        guard let server = call.getString("server"), let username = call.getString("username"), let password = call.getString("password") else {
+        guard let server = call.getString("server"), let username = call.getString("username"), let password = call.getString("password"), let answer1 = call.getString("answer1"), let answer2 = call.getString("answer2"), let answer3 = call.getString("answer3") else {
             call.reject("Missing properties")
             return;
         }
         
-        let credentials = Credentials(username: username, password: password)
+        let credentials = Credentials(username: username, password: password, answer1: answer1, answer2: answer2, answer3: answer3)
         
         do{
             try storeCredentialsInKeychain(credentials, server)
@@ -177,6 +183,9 @@ public class NativeBiometric: CAPPlugin {
         
         let account = credentials.username
         let password = credentials.password.data(using: String.Encoding.utf8)!
+        let answer1 = credentials.answer1.data(using: String.Encoding.utf8)!
+        let answer2 = credentials.answer2.data(using: String.Encoding.utf8)!
+        let answer3 = credentials.answer3.data(using: String.Encoding.utf8)!
         let attributes: [String: Any] = [kSecAttrAccount as String: account,
                                          kSecValueData as String: password]
         
@@ -202,13 +211,19 @@ public class NativeBiometric: CAPPlugin {
         
         guard let existingItem = item as? [String: Any],
               let passwordData = existingItem[kSecValueData as String] as? Data,
+              let answer1Data = existingItem[kSecValueData as String] as? Data,
+              let answer2Data = existingItem[kSecValueData as String] as? Data,
+              let answer3Data = existingItem[kSecValueData as String] as? Data,
               let password = String(data: passwordData, encoding: .utf8),
+              let answer1 = String(data: answer1Data, encoding: .utf8),
+              let answer2 = String(data: answer2Data, encoding: .utf8),
+              let answer3 = String(data: answer3Data, encoding: .utf8),
               let username = existingItem[kSecAttrAccount as String] as? String
         else {
             throw KeychainError.unexpectedPasswordData
         }
         
-        let credentials = Credentials(username: username, password: password)
+        let credentials = Credentials(username: username, password: password, answer1: answer1, answer2: answer2, answer3: answer3)
         return credentials
     }
     
