@@ -170,9 +170,6 @@ public class NativeBiometric extends Plugin {
     public void setCredentials(final PluginCall call) {
         String username = call.getString("username", null);
         String password = call.getString("password", null);
-        String answer1 = call.getString("answer1", null);
-        String answer2 = call.getString("answer2", null);
-        String answer3 = call.getString("answer3", null);
         String KEY_ALIAS = call.getString("server", null);
 
         if (username != null && password != null && KEY_ALIAS != null) {
@@ -180,9 +177,6 @@ public class NativeBiometric extends Plugin {
                 SharedPreferences.Editor editor = getContext().getSharedPreferences(NATIVE_BIOMETRIC_SHARED_PREFERENCES, Context.MODE_PRIVATE).edit();
                 editor.putString(KEY_ALIAS + "-username", encryptString(username, KEY_ALIAS));
                 editor.putString(KEY_ALIAS + "-password", encryptString(password, KEY_ALIAS));
-                editor.putString(KEY_ALIAS + "-answer1", encryptString(answer1, KEY_ALIAS));
-                editor.putString(KEY_ALIAS + "-answer2", encryptString(answer2, KEY_ALIAS));
-                editor.putString(KEY_ALIAS + "-answer3", encryptString(answer3, KEY_ALIAS));
                 editor.apply();
                 call.resolve();
             } catch (GeneralSecurityException | IOException e) {
@@ -201,18 +195,12 @@ public class NativeBiometric extends Plugin {
         SharedPreferences sharedPreferences = getContext().getSharedPreferences(NATIVE_BIOMETRIC_SHARED_PREFERENCES, Context.MODE_PRIVATE);
         String username = sharedPreferences.getString(KEY_ALIAS + "-username", null);
         String password = sharedPreferences.getString(KEY_ALIAS + "-password", null);
-        String answer1 = sharedPreferences.getString(KEY_ALIAS + "-answer1", null);
-        String answer2 = sharedPreferences.getString(KEY_ALIAS + "-answer2", null);
-        String answer3 = sharedPreferences.getString(KEY_ALIAS + "-answer3", null);
         if (KEY_ALIAS != null) {
             if (username != null && password != null) {
                 try {
                     JSObject jsObject = new JSObject();
                     jsObject.put("username", decryptString(username, KEY_ALIAS));
                     jsObject.put("password", decryptString(password, KEY_ALIAS));
-                    jsObject.put("answer1", decryptString(answer1, KEY_ALIAS));
-                    jsObject.put("answer2", decryptString(answer2, KEY_ALIAS));
-                    jsObject.put("answer3", decryptString(answer3, KEY_ALIAS));
                     call.resolve(jsObject);
                 } catch (GeneralSecurityException | IOException e) {
                     // Can get here if not authenticated.
