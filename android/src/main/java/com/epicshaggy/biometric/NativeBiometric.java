@@ -1,5 +1,6 @@
 package com.epicshaggy.biometric;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.content.Context;
@@ -14,7 +15,6 @@ import android.security.keystore.StrongBoxUnavailableException;
 import android.util.Base64;
 
 import androidx.activity.result.ActivityResult;
-import androidx.biometric.BiometricConstants;
 import androidx.biometric.BiometricManager;
 
 import com.getcapacitor.JSObject;
@@ -36,6 +36,7 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.ProviderException;
 import java.security.SecureRandom;
 import java.security.UnrecoverableEntryException;
 import java.security.cert.CertificateException;
@@ -48,7 +49,6 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import android.annotation.SuppressLint;
 
 
 
@@ -290,30 +290,61 @@ public class NativeBiometric extends Plugin {
     private Key generateKey(String KEY_ALIAS) throws GeneralSecurityException, IOException {
         Key key;
         try {
-            key = generateKey(KEY_ALIAS, true);
+            key = generateKeyWithRetry(KEY_ALIAS, true, 0);
         } catch (StrongBoxUnavailableException e){
-            key = generateKey(KEY_ALIAS, false);
+            key = generateKeyWithRetry(KEY_ALIAS, false, 0);
         }
         return key;
     }
-    private Key generateKey(String KEY_ALIAS, boolean isStrongBoxBacked) throws GeneralSecurityException, IOException, StrongBoxUnavailableException {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE);
-            KeyGenParameterSpec.Builder paramBuilder = new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setRandomizedEncryptionRequired(false);
+    
+    private Key generateKeyWithRetry(String KEY_ALIAS, boolean isStrongBoxBacked, int retryCount) 
+            throws GeneralSecurityException, IOException, StrongBoxUnavailableException {
+        // Maximum number of retries to avoid infinite loops
+        final int MAX_RETRIES = 1;
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE);
+                KeyGenParameterSpec.Builder paramBuilder = new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setRandomizedEncryptionRequired(false);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                paramBuilder.setUnlockedDeviceRequired(true);
-                paramBuilder.setIsStrongBoxBacked(isStrongBoxBacked);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    paramBuilder.setUnlockedDeviceRequired(true);
+                    paramBuilder.setIsStrongBoxBacked(isStrongBoxBacked);
+                }
+
+                generator.init(paramBuilder.build());
+                return generator.generateKey();
+            } else {
+                return getAESKey(KEY_ALIAS);
             }
-
-            generator.init(paramBuilder.build());
-            return generator.generateKey();
-        } else {
-            return getAESKey(KEY_ALIAS);
+        } catch (Exception e) {
+            // If we hit the KeyStore error and haven't exceeded retry count
+            if (retryCount < MAX_RETRIES && isKeyStoreException(e)) {
+                try {
+                    // Try to delete the problematic entry
+                    getKeyStore().deleteEntry(KEY_ALIAS);
+                    // Retry once more
+                    return generateKeyWithRetry(KEY_ALIAS, isStrongBoxBacked, retryCount + 1);
+                } catch (Exception cleanupException) {
+                    // If we failed to clean up, throw the original exception
+                    throw e;
+                }
+            } else {
+                // Either exceeded retries or it's a different error
+                throw e;
+            }
         }
+    }
+    
+    // Helper method to detect the specific KeyStore error
+    private boolean isKeyStoreException(Exception e) {
+        // Check if this is the specific "User ECDH key missing" error
+        return e instanceof ProviderException && e.getMessage() != null && 
+               e.getMessage().contains("Keystore key generation failed") &&
+               e.getCause() instanceof android.security.KeyStoreException;
     }
 
     private Key getKey(String KEY_ALIAS) throws GeneralSecurityException, IOException {
